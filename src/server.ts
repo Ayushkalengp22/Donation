@@ -2,8 +2,9 @@ import express, { Request, Response } from "express";
 import { PrismaClient } from "@prisma/client";
 import cors from "cors";
 import dotenv from "dotenv";
-import authRoutes from "./src/Login/auth";
-import donatorRoutes from "./src/Donator/donators";
+import authRoutes from "./Login/auth";
+import donatorRoutes from "./Donator/donators";
+import reportRouter from "./Report/report";
 
 dotenv.config();
 
@@ -20,6 +21,7 @@ app.get("/", (req: Request, res: Response) => {
 // Auth routes
 app.use("/auth", authRoutes);
 app.use("/donators", donatorRoutes);
+app.use("/report", reportRouter);
 
 // Example: protected test route
 app.get("/protected", (req: Request, res: Response) => {
