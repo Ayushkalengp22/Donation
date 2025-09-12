@@ -9,12 +9,22 @@ const prisma = new PrismaClient();
  */
 router.post("/", async (req: Request, res: Response) => {
   try {
-    const { name, phone, address, amount, paidAmount, userId } = req.body;
+    const { name, phone, address, amount, paidAmount, userId, paymentMethod } =
+      req.body;
 
-    if (!name || !amount || !userId) {
-      return res
-        .status(400)
-        .json({ error: "Name, amount and userId are required" });
+    // Validate mandatory fields
+    if (!name || !amount || !userId || !paymentMethod) {
+      return res.status(400).json({
+        error: "Name, amount, userId, and paymentMethod are required",
+      });
+    }
+
+    // Validate payment method options
+    const allowedMethods = ["Not Done", "Cash", "Online"];
+    if (!allowedMethods.includes(paymentMethod)) {
+      return res.status(400).json({
+        error: `paymentMethod must be one of ${allowedMethods.join(", ")}`,
+      });
     }
 
     const balance = amount - (paidAmount || 0);
@@ -40,6 +50,7 @@ router.post("/", async (req: Request, res: Response) => {
             paidAmount: paidAmount || 0,
             balance,
             status,
+            paymentMethod,
           },
         },
       },
@@ -131,15 +142,23 @@ router.put("/:id", async (req: Request, res: Response) => {
 router.patch("/:donatorId/donation", async (req: Request, res: Response) => {
   try {
     const donatorId = Number(req.params.donatorId);
-    const { donationId, paidAmount } = req.body as {
+    const { donationId, paidAmount, paymentMethod, name } = req.body as {
       donationId: number;
-      paidAmount: number;
+      paidAmount?: number;
+      paymentMethod?: "Not Done" | "Cash" | "Online";
+      name?: string;
     };
 
-    if (!donationId || paidAmount === undefined) {
-      return res
-        .status(400)
-        .json({ error: "donationId and paidAmount are required" });
+    if (!donationId) {
+      return res.status(400).json({ error: "donationId is required" });
+    }
+
+    // Validate paymentMethod if provided
+    const allowedMethods = ["Not Done", "Cash", "Online"];
+    if (paymentMethod && !allowedMethods.includes(paymentMethod)) {
+      return res.status(400).json({
+        error: `paymentMethod must be one of ${allowedMethods.join(", ")}`,
+      });
     }
 
     // 1️⃣ Fetch the donation
@@ -155,18 +174,29 @@ router.patch("/:donatorId/donation", async (req: Request, res: Response) => {
     const updatedDonation = await prisma.donation.update({
       where: { id: donationId },
       data: {
-        paidAmount,
-        balance: existingDonation.amount - paidAmount,
-        status:
-          paidAmount === existingDonation.amount
-            ? "PAID"
-            : paidAmount > 0
-            ? "PARTIAL"
-            : "PENDING",
+        ...(paidAmount !== undefined && {
+          paidAmount,
+          balance: existingDonation.amount - paidAmount,
+          status:
+            paidAmount === existingDonation.amount
+              ? "PAID"
+              : paidAmount > 0
+              ? "PARTIAL"
+              : "PENDING",
+        }),
+        ...(paymentMethod && { paymentMethod }),
       },
     });
 
-    // 3️⃣ Fetch all donations for this donor to recalc totals
+    // 3️⃣ Update donator name if provided
+    if (name) {
+      await prisma.donator.update({
+        where: { id: donatorId },
+        data: { name },
+      });
+    }
+
+    // 4️⃣ Fetch all donations for this donor to recalc totals
     const donations = await prisma.donation.findMany({
       where: { donatorId },
     });
@@ -174,7 +204,7 @@ router.patch("/:donatorId/donation", async (req: Request, res: Response) => {
     const totalPaid = donations.reduce((sum, d) => sum + d.paidAmount, 0);
     const totalBalance = donations.reduce((sum, d) => sum + d.balance, 0);
 
-    // 4️⃣ Return updated donation + donor totals
+    // 5️⃣ Return updated donation + donor totals
     res.json({
       donation: updatedDonation,
       donorTotals: {
