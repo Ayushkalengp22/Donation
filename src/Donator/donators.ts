@@ -38,8 +38,15 @@ router.post("/", authMiddleware, async (req: Request, res: Response) => {
       return res.status(403).json({ error: "Only admins can add donations" });
     }
 
-    const { name, phone, address, amount, paidAmount, paymentMethod } =
-      req.body;
+    const {
+      name,
+      phone,
+      address,
+      amount,
+      paidAmount,
+      paymentMethod,
+      bookNumber,
+    } = req.body;
 
     if (!name || !amount || !paymentMethod) {
       return res.status(400).json({
@@ -76,6 +83,7 @@ router.post("/", authMiddleware, async (req: Request, res: Response) => {
             balance,
             status,
             paymentMethod,
+            bookNumber,
           },
         },
       },
@@ -256,5 +264,48 @@ router.patch(
     }
   }
 );
+
+router.get("/book/:bookNumber", authMiddleware, async (req, res) => {
+  try {
+    const { role } = (req as any).user;
+    if (role !== "ADMIN") {
+      return res
+        .status(403)
+        .json({ error: "Only admins can view bookwise donations" });
+    }
+
+    const { bookNumber } = req.params;
+
+    const donations = await prisma.donation.findMany({
+      where: { bookNumber },
+      include: { donator: true },
+    });
+
+    res.json(donations);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get("/summary/book/:bookNumber", authMiddleware, async (req, res) => {
+  try {
+    const { bookNumber } = req.params;
+
+    const donations = await prisma.donation.findMany({ where: { bookNumber } });
+
+    const totalAmount = donations.reduce((sum, d) => sum + d.amount, 0);
+    const totalPaid = donations.reduce((sum, d) => sum + d.paidAmount, 0);
+    const totalBalance = donations.reduce((sum, d) => sum + d.balance, 0);
+
+    res.json({
+      bookNumber,
+      totalAmount,
+      totalPaid,
+      totalBalance,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 export default router;
