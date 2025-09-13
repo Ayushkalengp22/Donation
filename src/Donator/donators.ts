@@ -1,25 +1,52 @@
 import { Router, Request, Response } from "express";
 import { PrismaClient } from "@prisma/client";
+import jwt from "jsonwebtoken";
+
+const JWT_SECRET = process.env.JWT_SECRET || "supersecret";
 
 const router = Router();
 const prisma = new PrismaClient();
 
+// Middleware to verify JWT & extract user
+function authMiddleware(req: any, res: any, next: any) {
+  const authHeader = req.headers["authorization"];
+  if (!authHeader) {
+    return res.status(401).json({ error: "No token provided" });
+  }
+
+  const token = authHeader.split(" ")[1]; // "Bearer <token>"
+
+  try {
+    const decoded: any = jwt.verify(token, JWT_SECRET);
+    req.user = decoded; // { id, role }
+    next();
+  } catch (err) {
+    return res.status(401).json({ error: "Invalid token" });
+  }
+}
+
 /**
  * ➕ Add Donator (with first donation)
  */
-router.post("/", async (req: Request, res: Response) => {
+
+// Only ADMIN can add donation
+router.post("/", authMiddleware, async (req: Request, res: Response) => {
   try {
-    const { name, phone, address, amount, paidAmount, userId, paymentMethod } =
+    const { role, id: userId } = (req as any).user;
+
+    if (role.name !== "ADMIN") {
+      return res.status(403).json({ error: "Only admins can add donations" });
+    }
+
+    const { name, phone, address, amount, paidAmount, paymentMethod } =
       req.body;
 
-    // Validate mandatory fields
-    if (!name || !amount || !userId || !paymentMethod) {
+    if (!name || !amount || !paymentMethod) {
       return res.status(400).json({
-        error: "Name, amount, userId, and paymentMethod are required",
+        error: "Name, amount, and paymentMethod are required",
       });
     }
 
-    // Validate payment method options
     const allowedMethods = ["Not Done", "Cash", "Online"];
     if (!allowedMethods.includes(paymentMethod)) {
       return res.status(400).json({
@@ -29,7 +56,6 @@ router.post("/", async (req: Request, res: Response) => {
 
     const balance = amount - (paidAmount || 0);
 
-    // Determine status
     let status: "PAID" | "PARTIAL" | "PENDING" = "PENDING";
     if (paidAmount && paidAmount >= amount) {
       status = "PAID";
@@ -37,7 +63,6 @@ router.post("/", async (req: Request, res: Response) => {
       status = "PARTIAL";
     }
 
-    // Create Donator + Donation
     const donator = await prisma.donator.create({
       data: {
         name,
@@ -117,9 +142,13 @@ router.get("/:id", async (req: Request, res: Response) => {
 });
 
 // src/Donator/donators.ts
-
-router.put("/:id", async (req: Request, res: Response) => {
+router.put("/:id", authMiddleware, async (req: Request, res: Response) => {
   try {
+    const { role } = (req as any).user;
+    if (role !== "ADMIN") {
+      return res.status(403).json({ error: "Only admins can update donators" });
+    }
+
     const { id } = req.params;
     const { name, email, totalAmount, balanceAmount } = req.body;
 
@@ -139,83 +168,93 @@ router.put("/:id", async (req: Request, res: Response) => {
   }
 });
 
-router.patch("/:donatorId/donation", async (req: Request, res: Response) => {
-  try {
-    const donatorId = Number(req.params.donatorId);
-    const { donationId, paidAmount, paymentMethod, name } = req.body as {
-      donationId: number;
-      paidAmount?: number;
-      paymentMethod?: "Not Done" | "Cash" | "Online";
-      name?: string;
-    };
+router.patch(
+  "/:donatorId/donation",
+  authMiddleware,
+  async (req: Request, res: Response) => {
+    try {
+      const { role } = (req as any).user;
+      if (role !== "ADMIN") {
+        return res
+          .status(403)
+          .json({ error: "Only admins can update donations" });
+      }
+      const donatorId = Number(req.params.donatorId);
+      const { donationId, paidAmount, paymentMethod, name } = req.body as {
+        donationId: number;
+        paidAmount?: number;
+        paymentMethod?: "Not Done" | "Cash" | "Online";
+        name?: string;
+      };
 
-    if (!donationId) {
-      return res.status(400).json({ error: "donationId is required" });
-    }
+      if (!donationId) {
+        return res.status(400).json({ error: "donationId is required" });
+      }
 
-    // Validate paymentMethod if provided
-    const allowedMethods = ["Not Done", "Cash", "Online"];
-    if (paymentMethod && !allowedMethods.includes(paymentMethod)) {
-      return res.status(400).json({
-        error: `paymentMethod must be one of ${allowedMethods.join(", ")}`,
+      // Validate paymentMethod if provided
+      const allowedMethods = ["Not Done", "Cash", "Online"];
+      if (paymentMethod && !allowedMethods.includes(paymentMethod)) {
+        return res.status(400).json({
+          error: `paymentMethod must be one of ${allowedMethods.join(", ")}`,
+        });
+      }
+
+      // 1️⃣ Fetch the donation
+      const existingDonation = await prisma.donation.findUnique({
+        where: { id: donationId },
       });
-    }
 
-    // 1️⃣ Fetch the donation
-    const existingDonation = await prisma.donation.findUnique({
-      where: { id: donationId },
-    });
+      if (!existingDonation) {
+        return res.status(404).json({ error: "Donation not found" });
+      }
 
-    if (!existingDonation) {
-      return res.status(404).json({ error: "Donation not found" });
-    }
-
-    // 2️⃣ Update the donation
-    const updatedDonation = await prisma.donation.update({
-      where: { id: donationId },
-      data: {
-        ...(paidAmount !== undefined && {
-          paidAmount,
-          balance: existingDonation.amount - paidAmount,
-          status:
-            paidAmount === existingDonation.amount
-              ? "PAID"
-              : paidAmount > 0
-              ? "PARTIAL"
-              : "PENDING",
-        }),
-        ...(paymentMethod && { paymentMethod }),
-      },
-    });
-
-    // 3️⃣ Update donator name if provided
-    if (name) {
-      await prisma.donator.update({
-        where: { id: donatorId },
-        data: { name },
+      // 2️⃣ Update the donation
+      const updatedDonation = await prisma.donation.update({
+        where: { id: donationId },
+        data: {
+          ...(paidAmount !== undefined && {
+            paidAmount,
+            balance: existingDonation.amount - paidAmount,
+            status:
+              paidAmount === existingDonation.amount
+                ? "PAID"
+                : paidAmount > 0
+                ? "PARTIAL"
+                : "PENDING",
+          }),
+          ...(paymentMethod && { paymentMethod }),
+        },
       });
+
+      // 3️⃣ Update donator name if provided
+      if (name) {
+        await prisma.donator.update({
+          where: { id: donatorId },
+          data: { name },
+        });
+      }
+
+      // 4️⃣ Fetch all donations for this donor to recalc totals
+      const donations = await prisma.donation.findMany({
+        where: { donatorId },
+      });
+
+      const totalPaid = donations.reduce((sum, d) => sum + d.paidAmount, 0);
+      const totalBalance = donations.reduce((sum, d) => sum + d.balance, 0);
+
+      // 5️⃣ Return updated donation + donor totals
+      res.json({
+        donation: updatedDonation,
+        donorTotals: {
+          totalPaid,
+          totalBalance,
+        },
+      });
+    } catch (err: any) {
+      console.error(err);
+      res.status(500).json({ error: err.message });
     }
-
-    // 4️⃣ Fetch all donations for this donor to recalc totals
-    const donations = await prisma.donation.findMany({
-      where: { donatorId },
-    });
-
-    const totalPaid = donations.reduce((sum, d) => sum + d.paidAmount, 0);
-    const totalBalance = donations.reduce((sum, d) => sum + d.balance, 0);
-
-    // 5️⃣ Return updated donation + donor totals
-    res.json({
-      donation: updatedDonation,
-      donorTotals: {
-        totalPaid,
-        totalBalance,
-      },
-    });
-  } catch (err: any) {
-    console.error(err);
-    res.status(500).json({ error: err.message });
   }
-});
+);
 
 export default router;
