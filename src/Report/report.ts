@@ -12,6 +12,7 @@ interface ReportData {
   totalPaid: number;
   totalBalance: number;
   status: string;
+  paymentMethod: string; // ✅ Added
 }
 
 router.get("/pdf", async (req: Request, res: Response) => {
@@ -33,15 +34,19 @@ router.get("/pdf", async (req: Request, res: Response) => {
       const status =
         totalBalance === 0 ? "PAID" : totalPaid > 0 ? "PARTIAL" : "PENDING";
 
+      // ✅ Pick the latest donation's paymentMethod (you can change logic if needed)
+      const latestDonation = donor.donations[donor.donations.length - 1];
+      const paymentMethod = latestDonation?.paymentMethod || "Not Specified";
+
       return {
         name: donor.name,
         totalAmount,
         totalPaid,
         totalBalance,
         status,
+        paymentMethod, // ✅ Include
       };
     });
-
     // Create PDF document
     const doc = new PDFDocument({
       margin: 50,
@@ -192,8 +197,9 @@ function addTable(doc: PDFKit.PDFDocument, data: ReportData[]) {
     "Amount Paid",
     "Balance",
     "Status",
+    "Payment M", // ✅ New column
   ];
-  const columnWidths = [150, 100, 100, 100, 95];
+  const columnWidths = [120, 90, 90, 90, 70, 90];
   const tableWidth = columnWidths.reduce((a, b) => a + b, 0);
 
   let currentY = tableTop;
@@ -326,7 +332,16 @@ function addTable(doc: PDFKit.PDFDocument, data: ReportData[]) {
         width: columnWidths[4] - 16,
         align: "center",
       });
-
+    currentX += columnWidths[4];
+    doc
+      .fillColor("#212529")
+      .font("Helvetica")
+      .text(row.paymentMethod, currentX + 8, currentY + 10, {
+        width: columnWidths[5] - 16,
+        align: "center",
+        ellipsis: true,
+      });
+    currentX += columnWidths[5];
     // Draw vertical lines
     currentX = startX;
     columnWidths.forEach((width) => {
