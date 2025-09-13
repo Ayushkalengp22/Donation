@@ -6,9 +6,9 @@ import jwt from "jsonwebtoken";
 const router = Router();
 const prisma = new PrismaClient();
 
-const JWT_SECRET = process.env.JWT_SECRET || "supersecret"; // keep in .env
+const JWT_SECRET = process.env.JWT_SECRET || "supersecret";
 
-// ✅ Register user
+// ✅ Register user (SAME AS ORIGINAL)
 router.post("/register", async (req: Request, res: Response) => {
   try {
     const { name, email, password, role } = req.body;
@@ -37,8 +37,7 @@ router.post("/register", async (req: Request, res: Response) => {
   }
 });
 
-// ✅ Login user
-// ✅ Login user
+// ✅ Login user (ENHANCED WITH MANDAL SUPPORT)
 router.post("/login", async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body;
@@ -47,10 +46,23 @@ router.post("/login", async (req: Request, res: Response) => {
       return res.status(400).json({ error: "All fields are required" });
     }
 
-    // Find user (also include role if it's a relation)
+    // Find user with role and mandals
     const user = await prisma.user.findUnique({
       where: { email },
-      include: { role: true }, // 👈 make sure role is fetched
+      include: {
+        role: true,
+        userMandals: {
+          include: {
+            mandal: {
+              select: {
+                id: true,
+                name: true,
+                description: true,
+              },
+            },
+          },
+        },
+      },
     });
 
     if (!user) {
@@ -63,15 +75,29 @@ router.post("/login", async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Invalid email or password" });
     }
 
-    // Generate token with both id and role
-    // inside login
+    // Extract mandal data
+    const mandals =
+      user.userMandals?.map((um) => ({
+        id: um.mandal?.id,
+        name: um.mandal?.name,
+        description: um.mandal?.description,
+        joinedAt: um.joinedAt,
+      })) || [];
+
+    // Generate token with both id and role (SAME AS ORIGINAL)
     const token = jwt.sign({ id: user.id, role: user.role }, JWT_SECRET, {
       expiresIn: "7d",
     });
+
     res.json({
       message: "Login successful",
       token,
-      user: { id: user.id, email: user.email, role: user.role },
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        mandals, // NEW: Include mandals in response
+      },
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

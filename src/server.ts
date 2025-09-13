@@ -2,9 +2,10 @@ import express, { Request, Response } from "express";
 import { PrismaClient } from "@prisma/client";
 import cors from "cors";
 import dotenv from "dotenv";
-import authRoutes from "./Login/auth";
-import donatorRoutes from "./Donator/donators";
-import reportRouter from "./Report/report";
+import authRoutes from "./routes/auth";
+import donatorRoutes from "./routes/donators";
+// import reportRouter from "./Report/report";
+import mandalRoutes from "./routes/mandals";
 
 dotenv.config();
 
@@ -19,9 +20,10 @@ app.get("/", (req: Request, res: Response) => {
   res.send("Donation Backend Running 🚀");
 });
 // Auth routes
-app.use("/auth", authRoutes);
-app.use("/donators", donatorRoutes);
-app.use("/report", reportRouter);
+app.use("/api/auth", authRoutes);
+app.use("/api/donators", donatorRoutes);
+app.use("/api/mandals", mandalRoutes);
+// app.use("/report", reportRouter);
 
 // Example: protected test route
 app.get("/protected", (req: Request, res: Response) => {

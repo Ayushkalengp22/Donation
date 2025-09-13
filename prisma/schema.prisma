@@ -16,10 +16,26 @@ model User {
   role      Role     @relation(fields: [roleId], references: [id])
   createdAt DateTime @default(now())
 
+  // Many-to-many relationship with Mandal
+  userMandals UserMandal[]
   Donation Donation[]
 }
+
+// Junction table for User-Mandal many-to-many relationship
+model UserMandal {
+  id       Int    @id @default(autoincrement())
+  userId   Int
+  mandalId Int?
+  joinedAt DateTime @default(now())
+  
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mandal Mandal? @relation(fields: [mandalId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, mandalId]) // Prevent duplicate entries
+}
+
 model Role {
-  id    Int    @id @default(autoincrement())
+  id    Int      @id @default(autoincrement())
   name  RoleType @unique
   users User[]
 }
@@ -29,31 +45,52 @@ enum RoleType {
   VIEWER
 }
 
+model Mandal {
+  id         Int        @id @default(autoincrement())
+  name       String     @unique
+  password   String     // Hashed mandal password
+  description String?   // Optional description
+  donations  Donation[]
+  donators   Donator[]  // Added this relation
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+  
+  // Many-to-many relationship with User
+  userMandals UserMandal[]
+}
+
 model Donator {
   id        Int      @id @default(autoincrement())
   name      String
-  phone     String?   // optional phone number
-  address   String?   // optional address
+  phone     String?
+  address   String?
+  mandalId  Int?      // Make this required - every donator belongs to a mandal
+  
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  mandal    Mandal?     @relation(fields: [mandalId], references: [id])
   donations Donation[]
 }
+
 model Donation {
   id         Int      @id @default(autoincrement())
   donatorId  Int
-  userId     Int        // which collector (user) added this donation
+  userId     Int
   amount     Float
   status     DonationStatus @default(PENDING)
   paidAmount Float    @default(0)
   balance    Float    @default(0)
   paymentMethod String @default("Not Done")
   bookNumber    String?
+  mandalId   Int?      // Make this required
+  
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
   donator Donator @relation(fields: [donatorId], references: [id])
   user    User    @relation(fields: [userId], references: [id])
+  mandal  Mandal?  @relation(fields: [mandalId], references: [id])
 
   PaymentHistory PaymentHistory[]
 }
