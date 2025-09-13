@@ -48,7 +48,7 @@ model Donation {
   paidAmount Float    @default(0)
   balance    Float    @default(0)
   paymentMethod String @default("Not Done")
-
+  bookNumber    String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
