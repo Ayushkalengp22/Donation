@@ -11,7 +11,7 @@ const JWT_SECRET = process.env.JWT_SECRET || "supersecret"; // keep in .env
 // ✅ Register user
 router.post("/register", async (req: Request, res: Response) => {
   try {
-    const { name, email, password } = req.body;
+    const { name, email, password, role } = req.body;
 
     if (!name || !email || !password) {
       return res.status(400).json({ error: "All fields are required" });
@@ -28,7 +28,7 @@ router.post("/register", async (req: Request, res: Response) => {
 
     // Save user
     const user = await prisma.user.create({
-      data: { name, email, password: hashedPassword },
+      data: { name, email, password: hashedPassword, role },
     });
 
     res.json({ message: "User registered successfully", user });
@@ -38,6 +38,7 @@ router.post("/register", async (req: Request, res: Response) => {
 });
 
 // ✅ Login user
+// ✅ Login user
 router.post("/login", async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body;
@@ -46,8 +47,12 @@ router.post("/login", async (req: Request, res: Response) => {
       return res.status(400).json({ error: "All fields are required" });
     }
 
-    // Find user
-    const user = await prisma.user.findUnique({ where: { email } });
+    // Find user (also include role if it's a relation)
+    const user = await prisma.user.findUnique({
+      where: { email },
+      include: { role: true }, // 👈 make sure role is fetched
+    });
+
     if (!user) {
       return res.status(400).json({ error: "Invalid email or password" });
     }
@@ -58,12 +63,16 @@ router.post("/login", async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Invalid email or password" });
     }
 
-    // Generate token
-    const token = jwt.sign({ userId: user.id }, JWT_SECRET, {
+    // Generate token with both id and role
+    // inside login
+    const token = jwt.sign({ id: user.id, role: user.role }, JWT_SECRET, {
       expiresIn: "7d",
     });
-
-    res.json({ message: "Login successful", token });
+    res.json({
+      message: "Login successful",
+      token,
+      user: { id: user.id, email: user.email, role: user.role },
+    });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
