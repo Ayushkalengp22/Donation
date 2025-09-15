@@ -4,65 +4,56 @@ generator client {
 
 datasource db {
   provider = "mysql"
-  // url      = env("mysql://prisma:ayushk14@localhost:3306/Donation")
   url      = env("DATABASE_URL")
 }
 
 model User {
-  id        Int      @id @default(autoincrement())
+  id        Int        @id @default(autoincrement())
   name      String
-  email     String   @unique
+  email     String     @unique
   password  String
+  createdAt DateTime   @default(now())
   roleId    Int
-  role      Role     @relation(fields: [roleId], references: [id])
-  createdAt DateTime @default(now())
+  Donation  Donation[]
+  role      Role       @relation(fields: [roleId], references: [id])
 
-  Donation Donation[]
+  @@index([roleId], map: "User_roleId_fkey")
 }
+
 model Role {
-  id    Int    @id @default(autoincrement())
+  id    Int      @id @default(autoincrement())
   name  RoleType @unique
   users User[]
 }
 
-enum RoleType {
-  ADMIN
-  VIEWER
-}
-
 model Donator {
-  id        Int      @id @default(autoincrement())
+  id        Int        @id @default(autoincrement())
   name      String
-  phone     String?   // optional phone number
-  address   String?   // optional address
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
+  phone     String?
+  address   String?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
   donations Donation[]
 }
+
 model Donation {
-  id         Int      @id @default(autoincrement())
-  donatorId  Int
-  userId     Int        // which collector (user) added this donation
-  amount     Float
-  status     DonationStatus @default(PENDING)
-  paidAmount Float    @default(0)
-  balance    Float    @default(0)
-  paymentMethod String @default("Not Done")
-  bookNumber    String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  donator Donator @relation(fields: [donatorId], references: [id])
-  user    User    @relation(fields: [userId], references: [id])
-
+  id             Int              @id @default(autoincrement())
+  donatorId      Int
+  userId         Int
+  amount         Float
+  status         DonationStatus   @default(PENDING)
+  paidAmount     Float            @default(0)
+  balance        Float            @default(0)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  paymentMethod  String           @default("Not Done")
+  bookNumber     String?
+  donator        Donator          @relation(fields: [donatorId], references: [id])
+  user           User             @relation(fields: [userId], references: [id])
   PaymentHistory PaymentHistory[]
-}
 
-enum DonationStatus {
-  PAID
-  PARTIAL
-  PENDING
+  @@index([donatorId], map: "Donation_donatorId_fkey")
+  @@index([userId], map: "Donation_userId_fkey")
 }
 
 model PaymentHistory {
@@ -70,6 +61,18 @@ model PaymentHistory {
   donationId Int
   amount     Float
   paidAt     DateTime @default(now())
+  donation   Donation @relation(fields: [donationId], references: [id])
 
-  donation Donation @relation(fields: [donationId], references: [id])
+  @@index([donationId], map: "PaymentHistory_donationId_fkey")
+}
+
+enum RoleType {
+  ADMIN
+  VIEWER
+}
+
+enum DonationStatus {
+  PAID
+  PARTIAL
+  PENDING
 }
