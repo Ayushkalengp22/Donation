@@ -153,7 +153,8 @@ router.get("/:id", async (req: Request, res: Response) => {
 router.put("/:id", authMiddleware, async (req: Request, res: Response) => {
   try {
     const { role } = (req as any).user;
-    if (role !== "ADMIN") {
+    if (role.name !== "ADMIN") {
+      // ✅ This is correct
       return res.status(403).json({ error: "Only admins can update donators" });
     }
 
@@ -182,7 +183,7 @@ router.patch(
   async (req: Request, res: Response) => {
     try {
       const { role } = (req as any).user;
-      if (role !== "ADMIN") {
+      if (role.name !== "ADMIN") {
         return res
           .status(403)
           .json({ error: "Only admins can update donations" });
@@ -216,17 +217,39 @@ router.patch(
         return res.status(404).json({ error: "Donation not found" });
       }
 
-      // 2️⃣ Update the donation
+      // 2️⃣ Validate payment amount if provided
+      if (paidAmount !== undefined) {
+        if (paidAmount <= 0) {
+          return res.status(400).json({
+            error: "Payment amount must be greater than 0",
+          });
+        }
+
+        const newTotalPaid = existingDonation.paidAmount + paidAmount;
+
+        if (newTotalPaid > existingDonation.amount) {
+          const remainingBalance =
+            existingDonation.amount - existingDonation.paidAmount;
+          return res.status(400).json({
+            error: `Payment exceeds donation amount. Maximum additional payment: ₹${remainingBalance}`,
+          });
+        }
+      }
+
+      // 3️⃣ Update the donation
       const updatedDonation = await prisma.donation.update({
         where: { id: donationId },
         data: {
           ...(paidAmount !== undefined && {
-            paidAmount,
-            balance: existingDonation.amount - paidAmount,
+            paidAmount: existingDonation.paidAmount + paidAmount, // ADD to existing
+            balance:
+              existingDonation.amount -
+              (existingDonation.paidAmount + paidAmount),
             status:
-              paidAmount === existingDonation.amount
+              existingDonation.paidAmount + paidAmount >=
+              existingDonation.amount
                 ? "PAID"
-                : paidAmount > 0
+                : existingDonation.paidAmount + paidAmount > 0
                 ? "PARTIAL"
                 : "PENDING",
           }),
@@ -234,7 +257,7 @@ router.patch(
         },
       });
 
-      // 3️⃣ Update donator name if provided
+      // 4️⃣ Update donator name if provided
       if (name) {
         await prisma.donator.update({
           where: { id: donatorId },
@@ -242,7 +265,7 @@ router.patch(
         });
       }
 
-      // 4️⃣ Fetch all donations for this donor to recalc totals
+      // 5️⃣ Fetch all donations for this donor to recalc totals
       const donations = await prisma.donation.findMany({
         where: { donatorId },
       });
@@ -250,7 +273,7 @@ router.patch(
       const totalPaid = donations.reduce((sum, d) => sum + d.paidAmount, 0);
       const totalBalance = donations.reduce((sum, d) => sum + d.balance, 0);
 
-      // 5️⃣ Return updated donation + donor totals
+      // 6️⃣ Return updated donation + donor totals
       res.json({
         donation: updatedDonation,
         donorTotals: {
