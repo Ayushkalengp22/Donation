@@ -302,7 +302,7 @@ router.patch(
 router.get("/book/:bookNumber", authMiddleware, async (req, res) => {
   try {
     const { role } = (req as any).user;
-    if (role !== "ADMIN") {
+    if (role.name !== "ADMIN") {
       return res
         .status(403)
         .json({ error: "Only admins can view bookwise donations" });
@@ -321,7 +321,7 @@ router.get("/book/:bookNumber", authMiddleware, async (req, res) => {
   }
 });
 
-router.get("/summary/book/:bookNumber", authMiddleware, async (req, res) => {
+router.get("/summary/book/:bookNumber", async (req, res) => {
   try {
     const { bookNumber } = req.params;
 
