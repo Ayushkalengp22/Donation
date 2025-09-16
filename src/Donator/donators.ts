@@ -102,7 +102,18 @@ router.post("/", authMiddleware, async (req: Request, res: Response) => {
 router.get("/", async (req: Request, res: Response) => {
   try {
     const donators = await prisma.donator.findMany({
-      include: { donations: true },
+      include: {
+        donations: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        },
+      },
     });
     res.json(donators);
   } catch (err: any) {

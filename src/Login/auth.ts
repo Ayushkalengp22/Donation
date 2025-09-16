@@ -28,7 +28,14 @@ router.post("/register", async (req: Request, res: Response) => {
 
     // Save user
     const user = await prisma.user.create({
-      data: { name, email, password: hashedPassword, role },
+      data: {
+        name,
+        email,
+        password: hashedPassword,
+        role: {
+          connect: { name: role }, // role should be "ADMIN", "USER", etc.
+        },
+      },
     });
 
     res.json({ message: "User registered successfully", user });
