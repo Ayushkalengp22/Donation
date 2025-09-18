@@ -59,11 +59,10 @@ router.post("/login", async (req: Request, res: Response) => {
       where: { email },
       include: { role: true }, // 👈 make sure role is fetched
     });
-
     if (!user) {
       return res.status(400).json({ error: "Invalid email or password" });
     }
-
+    console.log(JSON.stringify(user, null, 2), "user====");
     // Compare password
     const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) {
@@ -78,7 +77,12 @@ router.post("/login", async (req: Request, res: Response) => {
     res.json({
       message: "Login successful",
       token,
-      user: { id: user.id, email: user.email, role: user.role },
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+      },
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
